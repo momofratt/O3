@@ -87,7 +87,7 @@ a = 1.06270603
 b = -0.1934
 ax = 1.06270603
 bx = -0.319
-Sc = 0.75  # conversion efficiency
+Sc = 0.95  # conversion efficiency
 if(Sc>1):
     print("ERROR: efficiency greater then 1")
 
@@ -122,7 +122,7 @@ tot_frame["NO_E2"] = Sc * tot_frame["NO2_cal"] + tot_frame["NO_cal"]  # measured
 tot_frame["NO_0"] = tot_frame["NO_E1"] * exp( tot_frame["KO3"] * tE1 ) 
 tot_frame["NO2_0"] = ( Jc + tot_frame["KO3"] ) / Jc * ( tot_frame["NO_E2"] - tot_frame["NO_E1"] * exp( -( tot_frame["KO3"] * (tc2-tc1) + Jc*tc2 ) )) / ( 1 - exp(-(tot_frame["KO3"] + Jc ) * tc2) ) - tot_frame["NO_0"]
 
-####------------------- water vapour correction --------------------------####
+####------------------- water vapour correction ------------------------- ####
 alpha = 0.0043 # parameter
 Pa = 1013.25 # standard pressure
 Ts = 373.15 # steam temperature at 1013.25 hPa
@@ -132,6 +132,14 @@ tot_frame["sat_water_press"] = Pa * exp( 13.3185*tot_frame["t"]  - 1.9760 * pow(
 tot_frame["water_vapour_conc[ppth]"] = 1E5 * tot_frame["RH[%]"] * tot_frame["sat_water_press"] / (tot_frame["P_air[hPa]"]*1E5)
 
 tot_frame["NO_corr"] = tot_frame["NO_0"] * ( 1 + alpha * tot_frame["water_vapour_conc[ppth]"] )
+
+#### ------ calculate NO2 using NO_corr (RH corrected) values ----------- ####
+# same as before replacing NO_cal with NO_corr
+tot_frame["NO_F1"] = tot_frame["NO_corr"] 
+tot_frame["NO_F2"] = Sc * tot_frame["NO2_cal"] + tot_frame["NO_corr"]  
+
+tot_frame["NO_00"] = tot_frame["NO_F1"] * exp( tot_frame["KO3"] * tE1 ) 
+tot_frame["NO2_RHcorr"] = ( Jc + tot_frame["KO3"] ) / Jc * ( tot_frame["NO_F2"] - tot_frame["NO_F1"] * exp( -( tot_frame["KO3"] * (tc2-tc1) + Jc*tc2 ) )) / ( 1 - exp(-(tot_frame["KO3"] + Jc ) * tc2) ) - tot_frame["NO_00"]
 
 #plt.plot( (tot_frame["NO_cal"]  ) )
 
@@ -144,8 +152,23 @@ tot_frame["NO_corr"] = tot_frame["NO_0"] * ( 1 + alpha * tot_frame["water_vapour
 
 tot_frame["dt"] = pd.to_datetime(tot_frame["Date"] + " " + tot_frame["Time"])
 
-fig, axs = plt.subplots(3, sharex=True, sharey=True)
+fig, axs = plt.subplots(3, sharex=True)
 fig.suptitle('NO and O3 corrections')
 axs[0].plot( tot_frame["DayDec"], tot_frame["NO_cal"])
-axs[1].plot( tot_frame["DayDec"], tot_frame["NO_cal"] - tot_frame["NO_corr"] )
+axs[0].set_ylabel('$NO_{cal}$')
+axs[1].plot( tot_frame["DayDec"], tot_frame["NO_corr"] - tot_frame["NO_cal"] )
+axs[1].set_ylabel('$NO_{corr} - NO_{cal}$')
+
 axs[2].plot( tot_frame["DayDec"], tot_frame["NO_corr"] - tot_frame["NO_0"])
+axs[2].set_ylabel('$NO_{corr} - NO_{0}$')
+
+
+fig1, axs1 = plt.subplots(2, sharex=True)
+axs1[0].plot( tot_frame["DayDec"], tot_frame["NO2_0"] )
+axs1[0].plot( tot_frame["DayDec"], tot_frame["NO2_RHcorr"]  )
+
+axs1[0].set_ylabel('$NO_2$')
+
+axs1[1].plot( tot_frame["DayDec"], tot_frame["NO2_RHcorr"] - tot_frame["NO2_0"] )
+axs1[1].set_ylabel('$\Delta NO_2$')
+
