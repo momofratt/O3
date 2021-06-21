@@ -6,6 +6,7 @@ Contact: c.fratticioli@isac.cnr.it
 import pandas as pd
 from math import log
 from numpy import exp
+import matplotlib.dates as mdates
 from datetime import date, timedelta
 import matplotlib.pyplot as plt
 ############################################################################
@@ -17,7 +18,7 @@ instrument = ["meteo", "O3tei49i", "T200up"]
 location = "BOS"
 utc = "p00" 
 filepath = "./BOS/"
-
+resFolder = "./results"
 # ####################################################### #
 # ------------- calibration coefficients ---------------  #
 # ####################################################### #
@@ -161,6 +162,13 @@ for i in range((end_date - start_date).days):
 
     tot_frame = tot_frame.append(daily_frame, ignore_index=True)
 
+
+
+# remove redundant date and time cols
+del tot_frame["time"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date"]
+
+tot_frame.to_csv(resFolder + "tot_frame.csv", sep = ' ')
+
 ##############################################################################
 ##                                                                          ##
 ##                              Plotting                                    ##
@@ -169,19 +177,36 @@ for i in range((end_date - start_date).days):
 
 # daily_frame["dt"] = pd.to_datetime(daily_frame["Date"] + " " + daily_frame["Time"])
 
-plot_date = pd.to_datetime(tot_frame["#date"] + " " + tot_frame["time"])
+plot_date = pd.to_datetime(tot_frame["#date_x"] + " " + tot_frame["time_x"])
 
-fig, axs = plt.subplots(3, sharex=True)
+                                     
+                                     
+# Major ticks every month.
+fmt_month = mdates.MonthLocator()
+
+# Minor ticks every.
+fmt_day = mdates.DayLocator()
+
+nplots=3                                    
+fig, axs = plt.subplots(nplots, sharex=True)
+for i in range(0, nplots):
+    axs[i].xaxis.set_major_locator(fmt_month)
+    axs[i].xaxis.set_minor_locator(fmt_day)
+    
 fig.suptitle('NO and O3 corrections')
-axs[0].plot( tot_frame["#date"], tot_frame["NO_cal"])
+axs[0].scatter( tot_frame["#date_x"], tot_frame["NO_cal"])
 axs[0].set_ylabel('$NO_{cal}$')
-axs[1].plot( tot_frame["#date"], tot_frame["NO_corr"] - tot_frame["NO_cal"] )
+axs[1].scatter( tot_frame["#date_x"], tot_frame["NO_corr"] - tot_frame["NO_cal"] )
 axs[1].set_ylabel('$NO_{corr} - NO_{cal}$')
-axs[2].plot( tot_frame["#date"], tot_frame["NO2_0"] - tot_frame["NO2_cal"] )
+axs[2].scatter( tot_frame["#date_x"], tot_frame["NO2_0"] - tot_frame["NO2_cal"] )
 axs[2].set_ylabel('$NO_{2corr} - NO_{2cal}$')
+
+
+fig.savefig(resFolder + "NOx_corr.pdf")
 #axs[2].plot( tot_frame["#date"], tot_frame["NO_corr"] - tot_frame["NO_0"])
 #axs[2].set_ylabel('$NO_{corr} - NO_{0}$')
 
-tot_frame.to_csv("tot_frame.csv", sep = ' ')
+#fig3, axs3 = plt.scatter(tot_frame["NO_corr"] - tot_frame['NO_cal'], tot_frame["NO_corr"])
+#plt.show()
 
 
