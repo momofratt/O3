@@ -12,13 +12,14 @@ set style line 3 pt 0 ps 1 lc rgb "purple"
 
 set xdata time
 set grid 
-set ylabel "NO_2"
 set timefmt "%Y-%m-%d %H:%M:%S"
 
 
 ##### NO2 PLOT ######
 
 set output "./results/NO2.pdf"
+set ylabel "NO_2"
+
 
 set multiplot layout 3,1 
 # prova per attaccare tutti i plot con stesso asse x. Dice di usare terminal tikz
@@ -46,6 +47,8 @@ unset multiplot
 #### NO PLOT ######
 
 set output "./results/NO.pdf"
+set ylabel "NO"
+
 
 set multiplot layout 3,1 
 
