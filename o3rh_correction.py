@@ -167,7 +167,7 @@ for i in range((end_date - start_date).days):
 # remove redundant date and time cols
 del tot_frame["time"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date"]
 
-tot_frame.to_csv(resFolder + "tot_frame.csv", sep = ' ')
+tot_frame.to_csv("tot_frame.csv", sep = ' ')
 
 ##############################################################################
 ##                                                                          ##
