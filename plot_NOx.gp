@@ -34,17 +34,17 @@ plot data_file u 2:"NO2_cal" w p ls 1 t "NO2_{cal}"
 # data_file u 2:"NO2_0" w p ls 2 t "NO2_{corr}"
 	
 set ylabel "{/Symbol D}NO_2 / NO_2 [-]"
-set ytics 0, 0.2, 1
-set mytics
-set yrange [0:1]
+set ytics -1, 0.5, 1
+set mytics 2
+set yrange [-1:1]
 plot data_file u 2:( (column("NO2_0") - column("NO2_cal") ) / column("NO2_cal")   ) w p ls 2 t "{/Symbol D}NO_2 / NO_2 [-]"
 unset yrange
 
 set format x '%d/%m'
-set ytics -1, 1, 3
-set yrange [-0.2:3]
+set ytics -3, 1, 1
+set yrange [-3:1.5]
 set ylabel "{/Symbol D}NO_2"
-plot data_file u 2:(column("NO2_cal") - column("NO2_0") ) w p ls 3 t "NO2_{cal} - NO2_{corr}"
+plot data_file u 2:(column("NO2_0") - column("NO2_cal") ) w p ls 3 t "NO2_{corr} - NO2_{cal}"
 unset yrange 
 
 unset multiplot
