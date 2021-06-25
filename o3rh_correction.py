@@ -9,9 +9,9 @@ from numpy import exp
 import matplotlib.dates as mdates
 from datetime import date, timedelta
 import matplotlib.pyplot as plt
-############################################################################
-### ----------------- defining filenames and paths --------------------- ###
-############################################################################
+##############################################################################
+### ----------------- defining filenames and paths ----------------------- ###
+##############################################################################
 
 # defining file references
 instrument = ["meteo", "O3tei49i", "T200up"]
@@ -32,10 +32,13 @@ if(Sc>1):
 
 
 tot_frame = pd.DataFrame()
+hourly_averaged_mean = pd.DataFrame()
+hourly_averaged_median = pd.DataFrame()
 
 day_delta = timedelta(days=1) # The size of each step in days
 start_date = date(2021, 5, 1)
-end_date = date.today()
+#end_date = date.today()
+end_date = date(2021, 6, 8)
 
 ############ loop over dates ####################
 for i in range((end_date - start_date).days):
@@ -66,6 +69,7 @@ for i in range((end_date - start_date).days):
     except Exception:
         print("could not open file on date " + str(d))
         continue  # skip to next day
+
     ########## rename daydec columns (to be changed in original headers-> Busetto) ##################
     meteo_frame.rename(columns={"dey_dec": "daydec"}, inplace = True)
     nitrate_frame.rename(columns={"DayDec": "daydec"}, inplace = True)
@@ -162,12 +166,69 @@ for i in range((end_date - start_date).days):
 
     tot_frame = tot_frame.append(daily_frame, ignore_index=True)
 
+##############################################################################
+#### -------------- Evaluate hourly averaged data ----------------------- ####
+##############################################################################
+    hourly_averaged_mean.append(pd.DataFrame())
+    hourly_averaged_median.append(pd.DataFrame())
+    for j in range (0, 24):
+        #date = tot_frame["date"][j] 
+        #time = tot_frame["time"][j] 
+        mean_daily = daily_frame[j*60:(j+1)*60].mean().to_frame().transpose() #evaluate hourly mean of daily_frame
+        mean_daily.insert(0, "ddate", d )   # add date and time to mean_daily (not averaged since they are datetime type)
+        mean_daily.insert(1, "ttime", j * timedelta(hours = 1) )
+        hourly_averaged_mean = hourly_averaged_mean.append( mean_daily , ignore_index=True ) #append to the frame that contains hourly averaged data
+        
+        #the same replacing mean with median:
+        median_daily = daily_frame[j*60:(j+1)*60].median().to_frame().transpose()
+        median_daily.insert(0, "ddate", tot_frame["#date_x"][j*60] )
+        median_daily.insert(1, "ttime", tot_frame["time_x"][j*60] )
+        hourly_averaged_median = hourly_averaged_median.append( median_daily , ignore_index=True )
 
+
+##############################################################################
+#### ------------- Evaluate hourly mean and median ---------------------- ####
+##############################################################################
+# va calcolata la mediana delle mediane o basta la mediana della media oraria?
+
+#from the hourly averaged dataset evaluate the hourly mean and median
+hourly_mean = pd.DataFrame()
+hourly_median = pd.DataFrame()
+for k in range(0, 24):
+    hour = k * timedelta(hours = 1) 
+    hourly_mean = hourly_mean.append( hourly_averaged_mean[hourly_averaged_mean['ttime'] == hour].mean() , ignore_index=True )
+    hourly_median = hourly_median.append( hourly_averaged_median[hourly_averaged_mean['ttime'] == hour].median() ,ignore_index=True )
+
+##############################################################################
+##############################################################################
+# code for evaluating hourly mean and median directly from tot_frame (to be improved)
+# solutions: 1) try iteritems
+#            2) try double cycle over days and minutes for averaging
+##############################################################################
+
+# hourly_mean = pd.DataFrame()
+# hourly_median = pd.DataFrame()
+
+# for k in range(0, 24):
+    
+#     hour = ( datetime.datetime(2000,1,1,0,0,0) + (k * timedelta(hours = 1)) ).time() # obtain hour 00:00:00
+#     hour1 = ( datetime.datetime(2000,1,1,0,0,0) + (k * timedelta(hours = 1) + timedelta(hours = 1) ) ).time() # obtain hour + 1 hour
+    
+    
+#     hourly_mean = hourly_mean.append( tot_frame[ hour < pd.to_datetime(tot_frame['time_x']).dt.time < hour1 ].mean() , ignore_index=True )
+#     hourly_median = hourly_median.append( tot_frame[ hour < pd.to_datetime(tot_frame['time_x']).dt.time < hour1 ].median() ,ignore_index=True )
+    
+##############################################################################
+##############################################################################
 
 # remove redundant date and time cols
 del tot_frame["time"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date"]
 
 tot_frame.to_csv("tot_frame.csv", sep = ' ')
+hourly_averaged_median.to_csv("hourly_averaged_median.csv", sep = ' ')
+hourly_averaged_mean.to_csv("hourly_averaged_mean.csv", sep = ' ')
+hourly_mean.to_csv("hourly_mean.csv", sep = ' ')
+hourly_median.to_csv("hourly_median.csv", sep = ' ')
 
 ##############################################################################
 ##                                                                          ##
