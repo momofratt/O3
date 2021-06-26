@@ -8,6 +8,7 @@ from math import log
 from numpy import exp
 import matplotlib.dates as mdates
 from datetime import date, timedelta
+import datetime
 import matplotlib.pyplot as plt
 ##############################################################################
 ### ----------------- defining filenames and paths ----------------------- ###
@@ -174,7 +175,7 @@ for i in range((end_date - start_date).days):
     for j in range (0, 24):
         #date = tot_frame["date"][j] 
         #time = tot_frame["time"][j] 
-        mean_daily = daily_frame[j*60:(j+1)*60].mean().to_frame().transpose() #evaluate hourly mean of daily_frame
+        mean_daily = daily_frame[ j*60 : (j+1)*60 ].mean().to_frame().transpose() #evaluate hourly mean of daily_frame
         mean_daily.insert(0, "ddate", d )   # add date and time to mean_daily (not averaged since they are datetime type)
         mean_daily.insert(1, "ttime", j * timedelta(hours = 1) )
         hourly_averaged_mean = hourly_averaged_mean.append( mean_daily , ignore_index=True ) #append to the frame that contains hourly averaged data
@@ -190,34 +191,30 @@ for i in range((end_date - start_date).days):
 #### ------------- Evaluate hourly mean and median ---------------------- ####
 ##############################################################################
 # va calcolata la mediana delle mediane o basta la mediana della media oraria?
+tot_frame.insert(0, "datetime", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
+tot_frame = tot_frame.set_index("datetime")
 
-#from the hourly averaged dataset evaluate the hourly mean and median
 hourly_mean = pd.DataFrame()
 hourly_median = pd.DataFrame()
-for k in range(0, 24):
-    hour = k * timedelta(hours = 1) 
-    hourly_mean = hourly_mean.append( hourly_averaged_mean[hourly_averaged_mean['ttime'] == hour].mean() , ignore_index=True )
-    hourly_median = hourly_median.append( hourly_averaged_median[hourly_averaged_mean['ttime'] == hour].median() ,ignore_index=True )
+hourly_quartile1 = pd.DataFrame()
+hourly_quartile2 = pd.DataFrame()
+for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .median() puoi ottenere valori medi)
+     hourly = pd.DataFrame()
+     hourly = hourly.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))), ignore_index=True )
+#    hourly_mean = hourly_mean.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).mean() , ignore_index=True )
+#    hourly_median = hourly_median.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).median() ,ignore_index=True )
+#    hourly_quartile1 = hourly_quartile1.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).quantile(q=0.25) , ignore_index=True )
+#    hourly_quartile2 = hourly_quartile2.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).quantile(q=0.75) , ignore_index=True )
+     hourly.rename(columns={"#date_x": "date"}, inplace = True)
+     hourly.to_csv("hour"+str(k)+".csv", sep=' ', index=False)
+     del(hourly)
 
-##############################################################################
-##############################################################################
-# code for evaluating hourly mean and median directly from tot_frame (to be improved)
-# solutions: 1) try iteritems
-#            2) try double cycle over days and minutes for averaging
-##############################################################################
+hourly_mean_err1 = pd.merge(hourly_mean, hourly_quartile1)
+hourly_mean_err = pd.merge(hourly_mean_err1, hourly_quartile2)
 
-# hourly_mean = pd.DataFrame()
-# hourly_median = pd.DataFrame()
+hourly_median_err1 = pd.merge(hourly_median, hourly_quartile1)
+hourly_median_err = pd.merge(hourly_median_err1, hourly_quartile2)
 
-# for k in range(0, 24):
-    
-#     hour = ( datetime.datetime(2000,1,1,0,0,0) + (k * timedelta(hours = 1)) ).time() # obtain hour 00:00:00
-#     hour1 = ( datetime.datetime(2000,1,1,0,0,0) + (k * timedelta(hours = 1) + timedelta(hours = 1) ) ).time() # obtain hour + 1 hour
-    
-    
-#     hourly_mean = hourly_mean.append( tot_frame[ hour < pd.to_datetime(tot_frame['time_x']).dt.time < hour1 ].mean() , ignore_index=True )
-#     hourly_median = hourly_median.append( tot_frame[ hour < pd.to_datetime(tot_frame['time_x']).dt.time < hour1 ].median() ,ignore_index=True )
-    
 ##############################################################################
 ##############################################################################
 
@@ -229,6 +226,17 @@ hourly_averaged_median.to_csv("hourly_averaged_median.csv", sep = ' ')
 hourly_averaged_mean.to_csv("hourly_averaged_mean.csv", sep = ' ')
 hourly_mean.to_csv("hourly_mean.csv", sep = ' ')
 hourly_median.to_csv("hourly_median.csv", sep = ' ')
+
+
+hourly_quartile1.columns = hourly_quartile1.columns + "_q1"
+hourly_quartile2.columns = hourly_quartile2.columns + "_q2"
+
+print_cols = ["NO[ppb]", "NO_cal", "NO_corr", "NO2[ppb]", "NO2_cal", "NO2_0","NOx[ppb]", "NOx_cal"]
+hourly_mean.to_csv("hourly_mean_NOx.csv", columns = print_cols , sep = ' ')
+hourly_median.to_csv("hourly_median_NOx.csv", columns = print_cols , sep = ' ')
+
+hourly_quartile1.to_csv("hourly_mean_NOx_q1.csv", columns = ["NO[ppb]_q1", "NO_cal_q1", "NO_corr_q1", "NO2[ppb]_q1", "NO2_cal_q1", "NO2_0_q1", "NOx[ppb]_q1", "NOx_cal_q1"], sep = ' ')
+hourly_quartile2.to_csv("hourly_mean_NOx_q2.csv", columns = ["NO[ppb]_q2", "NO_cal_q2", "NO_corr_q2", "NO2[ppb]_q2", "NO2_cal_q2", "NO2_0_q2", "NOx[ppb]_q2", "NOx_cal_q2"] ,sep = ' ')
 
 ##############################################################################
 ##                                                                          ##
