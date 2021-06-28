@@ -1,10 +1,7 @@
-BOS
-data
-results
+BOS/
+data/
+hourly_data/
+results/
+resultsNOx_corr.pdf
 tot_frame.csv
 tot_frame_header_corrected.csv
-resultsNOx_corr.pdf
-hourly_averaged_mean.csv
-hourly_averaged_median.csv
-hourly_mean.csv
-hourly_median.csv
