@@ -6,7 +6,6 @@ Contact: c.fratticioli@isac.cnr.it
 import pandas as pd
 from math import log
 from numpy import exp
-import matplotlib.dates as mdates
 from datetime import date, timedelta
 import datetime
 import matplotlib.pyplot as plt
@@ -32,16 +31,19 @@ if(Sc>1):
     print("ERROR: efficiency greater then 1")
 
 
+night_corr_frame = pd.DataFrame()
 tot_frame = pd.DataFrame()
+nit_oz_frame = pd.DataFrame()
 hourly_averaged_mean = pd.DataFrame()
 hourly_averaged_median = pd.DataFrame()
 
 day_delta = timedelta(days=1) # The size of each step in days
 start_date = date(2021, 5, 1)
 #end_date = date.today()
-end_date = date(2021, 6, 8)
+end_date = date(2021, 5, 8)
+night_offset_corr = 'ON'
 
-############ loop over dates ####################
+############ loop over dates for nightime corrections ####################
 for i in range((end_date - start_date).days):
     d = start_date + i*day_delta
     year = str(d.year)
@@ -58,10 +60,62 @@ for i in range((end_date - start_date).days):
     dd = year + month + day  #convert from datetime to string format
     date_loc_ext = "_" + location + "_" + dd + "_" + utc + ".raw"
 
-    meteo_filenm = instrument[0] + date_loc_ext 
     ozone_filenm = instrument[1] + date_loc_ext
     nitrate_filenm = instrument[2] + date_loc_ext
+    # read data files
+    ozone_cols = ['daydec', 'O3']
+    nitrate_cols =  ['#date', 'time', 'DayDec', 'NO[ppb]']
+    try:
+        ozone_frame = pd.read_csv(filepath+ozone_filenm, delimiter = " ", usecols = ozone_cols)
+        nitrate_frame = pd.read_csv(filepath+nitrate_filenm, delimiter = " ", usecols = nitrate_cols)
+    except Exception:
+        print("could not open file on date " + str(d))
+        continue  # skip to next day
 
+    ########## rename daydec columns (to be changed in original headers-> Busetto) ##################
+    nitrate_frame.rename(columns={"DayDec": "daydec"}, inplace = True)
+    
+    try:
+        daily_frame = pd.merge(nitrate_frame, ozone_frame, on='daydec')  
+    except:
+        print("merging problem on date " +str(d))
+        continue # skip to next day
+    
+    ##############################################################################
+    #### --------------- Append daily_frame to tot_frame -------------------- ####
+    ##############################################################################
+    night_corr_frame = night_corr_frame.append(daily_frame, ignore_index=True)
+
+night_corr_frame.insert(0, "datetime", pd.to_datetime(night_corr_frame["#date"] + " " + night_corr_frame["time"]) )
+night_corr_frame = night_corr_frame.set_index("datetime")
+daily_offset=pd.DataFrame()
+for i in range((end_date - start_date).days-1):
+    d = start_date + i*day_delta
+    d1 = start_date + (i+1)*day_delta
+    night_00_03_frame = night_corr_frame.between_time(datetime.time(0,0,0), datetime.time(3,0,0)) # select rows between given time
+    night_00_03_today_frame = night_00_03_frame[ night_00_03_frame["#date"] == str(d) ]  # select rows on given day
+    night_00_03_today_frame = night_00_03_today_frame.append( night_00_03_frame[ night_00_03_frame["#date"] == str(d1) ])
+    daily_offset = daily_offset.append( night_00_03_today_frame[ night_00_03_today_frame["O3"] > 20 ].mean(), ignore_index=True)  # select rows with O3 > 20pp, then average
+    
+for i in range((end_date - start_date).days):
+    d = start_date + i*day_delta
+    year = str(d.year)
+    month = str(d.month)
+    day = str(d.day)
+    # convert date into str using the same format of the filenames e.g. 20210101 
+    # need to add "0" to months and days <9
+    if int(d.month) < 9:
+        month = str(0) + str(d.month)
+    if int(d.day) < 9:
+        day = str(0) +str(d.day)
+
+    # define filenames
+    dd = year + month + day  #convert from datetime to string format
+    date_loc_ext = "_" + location + "_" + dd + "_" + utc + ".raw"
+    
+    meteo_filenm = instrument[0] + date_loc_ext
+    ozone_filenm = instrument[1] + date_loc_ext
+    nitrate_filenm = instrument[2] + date_loc_ext
     # read data files
     try:
         meteo_frame = pd.read_csv(filepath+meteo_filenm, delimiter = " ")
@@ -72,43 +126,40 @@ for i in range((end_date - start_date).days):
         continue  # skip to next day
 
     ########## rename daydec columns (to be changed in original headers-> Busetto) ##################
-    meteo_frame.rename(columns={"dey_dec": "daydec"}, inplace = True)
     nitrate_frame.rename(columns={"DayDec": "daydec"}, inplace = True)
+    meteo_frame.rename(columns={"dey_dec": "daydec"}, inplace = True)
     
-    #meteo_frame.sort_values(by='daydec', inplace=True)
-    #ozone_frame.sort_values(by='daydec', inplace=True)
-    #nitrate_frame.sort_values(by='daydec', inplace=True)
-    
-    ############# define single frame with aligned times ####################
-    # daily_frame contains all the data from meteo, nitrate and ozone frames
-    ######## TO BE IMPROVED???? (merge_asof does not align): 
-    # data are aligned on 'day_dec'. If times do not match, the line is not included in daily_frame
     try:
-        nit_oz_frame = pd.merge(nitrate_frame, ozone_frame, on='daydec')
-        daily_frame = pd.merge(nit_oz_frame, meteo_frame, on='daydec')
-        #nit_oz_frame = pd.merge_asof(nitrate_frame, ozone_frame, on='daydec')
-        #daily_frame = pd.merge_asof(nit_oz_frame, meteo_frame, on='daydec')
+        nit_oz_frame = pd.merge(nitrate_frame, ozone_frame, on='daydec')  
+        daily_frame = pd.merge( nit_oz_frame, meteo_frame, on = 'daydec')
     except:
         print("merging problem on date " +str(d))
-        continue # skip to next day
-##############################################################################
-##                                                                          ##
-##                        Calibration corrections                           ##
-##                                                                          ##
-##############################################################################
+        continue # skip to next day    
+    ##############################################################################
+    ##                                                                          ##
+    ##                         Nighttime corrections                            ##
+    ##                                                                          ##
+    ##############################################################################
+   # if night_offset_corr == 'ON':
+        
 
+
+    ##############################################################################
+    ##                                                                          ##
+    ##                        Calibration corrections                           ##
+    ##                                                                          ##
+    ##############################################################################
     daily_frame["NO_cal"] = daily_frame["NO[ppb]"] * slopeNO + offsetNO
     daily_frame["NOx_cal1"] = daily_frame["NOx[ppb]"] * slopeNOx + offsetNOx  
     daily_frame["NO2_cal"] = ( daily_frame["NOx_cal1"] - daily_frame["NO_cal"] ) / Sc
     daily_frame["NOx_cal"] = daily_frame["NO_cal"] + daily_frame["NO2_cal"]
-    
 
-##############################################################################
-##                                                                          ##
-##              Application of water vapor corrections                      ##
-##                 Application of ozone corrections                         ##
-##                                                                          ##
-##############################################################################
+    ##############################################################################
+    ##                                                                          ##
+    ##              Application of water vapor corrections                      ##
+    ##                 Application of ozone corrections                         ##
+    ##                                                                          ##
+    ##############################################################################
 
     ####--------------------- ozone correction -------------------------------####
     tc2 = 1 #duration of stay in the converter (sec)
@@ -120,7 +171,6 @@ for i in range((end_date - start_date).days):
     daily_frame["KO3"] = daily_frame["KO3_NO"] * daily_frame["O3"] * 1E10
     Jc = -log(1-Sc)/tc2
     
-
     # defining NO_E1 and NO_E2 according to "SOPs for NOxy measurement" convenction
     daily_frame["NO_E1"] = daily_frame["NO_cal"] # measured NO signal [ppb] without photolytic converter
     daily_frame["NO_E2"] = Sc * daily_frame["NO2_cal"] + daily_frame["NO_cal"]  # measured NO signal [ppb] with photolytic converter
@@ -139,10 +189,9 @@ for i in range((end_date - start_date).days):
     
     daily_frame["NO_corr"] = daily_frame["NO_0"] * ( 1 + alpha * daily_frame["water_vapour_conc[ppth]"] )
 
-##############################################################################
-#### ------ calculate NO2 using NO_corr (RH corrected) values ----------- ####
-##############################################################################
-
+    ##############################################################################
+    #### ------ calculate NO2 using NO_corr (RH corrected) values ----------- ####
+    ##############################################################################
 
     # same as before replacing NO_cal with NO_corr
     #daily_frame["NO_F1"] = daily_frame["NO_corr"] 
@@ -161,15 +210,14 @@ for i in range((end_date - start_date).days):
     #axs1[1].plot( daily_frame["day_dec"], daily_frame["NO2_RHcorr"] - daily_frame["NO2_0"] )
     #axs1[1].set_ylabel('$\Delta NO_2$')
 
-##############################################################################
-#### --------------- Append daily_frame to tot_frame -------------------- ####
-##############################################################################
-
+    ##############################################################################
+    #### --------------- Append daily_frame to tot_frame -------------------- ####
+    ##############################################################################
     tot_frame = tot_frame.append(daily_frame, ignore_index=True)
-
-##############################################################################
-#### -------------- Evaluate hourly averaged data ----------------------- ####
-##############################################################################
+    
+    ##############################################################################
+    #### -------------- Evaluate hourly averaged data ----------------------- ####
+    ##############################################################################
     daily_frame.insert(0, "datetime", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
     daily_frame = daily_frame.set_index("datetime")
     for j in range (0, 24):
@@ -214,6 +262,8 @@ del hourly_averaged_median["status_x"], hourly_averaged_median["status_y"], hour
 tot_frame.to_csv("tot_frame.csv", sep = ' ')
 hourly_averaged_median.to_csv("./hourly_data/hourly_averaged_median.csv", sep = ' ', index=False)
 hourly_averaged_mean.to_csv("./hourly_data/hourly_averaged_mean.csv", sep = ' ', index=False)
+
+
 
 ##############################################################################
 ##                                                                          ##
