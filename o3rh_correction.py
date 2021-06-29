@@ -170,73 +170,50 @@ for i in range((end_date - start_date).days):
 ##############################################################################
 #### -------------- Evaluate hourly averaged data ----------------------- ####
 ##############################################################################
-    hourly_averaged_mean.append(pd.DataFrame())
-    hourly_averaged_median.append(pd.DataFrame())
+    daily_frame.insert(0, "datetime", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
+    daily_frame = daily_frame.set_index("datetime")
     for j in range (0, 24):
-        #date = tot_frame["date"][j] 
-        #time = tot_frame["time"][j] 
-        mean_daily = daily_frame[ j*60 : (j+1)*60 ].mean().to_frame().transpose() #evaluate hourly mean of daily_frame
-        mean_daily.insert(0, "ddate", d )   # add date and time to mean_daily (not averaged since they are datetime type)
-        mean_daily.insert(1, "ttime", j * timedelta(hours = 1) )
+        mean_daily = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).mean().to_frame().transpose() #evaluate hourly mean of daily_frame
+        mean_daily.insert(0, "ddate", d)
+        mean_daily.insert(1, "ttime", str(datetime.time(j,0,0)))
         hourly_averaged_mean = hourly_averaged_mean.append( mean_daily , ignore_index=True ) #append to the frame that contains hourly averaged data
         
         #the same replacing mean with median:
-        median_daily = daily_frame[j*60:(j+1)*60].median().to_frame().transpose()
-        median_daily.insert(0, "ddate", tot_frame["#date_x"][j*60] )
-        median_daily.insert(1, "ttime", tot_frame["time_x"][j*60] )
+        median_daily = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).median().to_frame().transpose()
+        median_daily.insert(0, "ddate", d)
+        median_daily.insert(1, "ttime", str(datetime.time(j,0,0)))
         hourly_averaged_median = hourly_averaged_median.append( median_daily , ignore_index=True )
-
 
 ##############################################################################
 #### ------------- Evaluate hourly mean and median ---------------------- ####
 ##############################################################################
-# va calcolata la mediana delle mediane o basta la mediana della media oraria?
+
 tot_frame.insert(0, "datetime", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
 tot_frame = tot_frame.set_index("datetime")
 
-hourly_mean = pd.DataFrame()
-hourly_median = pd.DataFrame()
-hourly_quartile1 = pd.DataFrame()
-hourly_quartile2 = pd.DataFrame()
 for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .median() puoi ottenere valori medi)
      hourly = pd.DataFrame()
      hourly = hourly.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))), ignore_index=True )
-#    hourly_mean = hourly_mean.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).mean() , ignore_index=True )
-#    hourly_median = hourly_median.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).median() ,ignore_index=True )
-#    hourly_quartile1 = hourly_quartile1.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).quantile(q=0.25) , ignore_index=True )
-#    hourly_quartile2 = hourly_quartile2.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))).quantile(q=0.75) , ignore_index=True )
      hourly.rename(columns={"#date_x": "date"}, inplace = True)
-     hourly.to_csv("hour"+str(k)+".csv", sep=' ', index=False)
+     hourly.to_csv("./hourly_data/hour"+str(k)+".csv", sep=' ', index=False)
      del(hourly)
 
-hourly_mean_err1 = pd.merge(hourly_mean, hourly_quartile1)
-hourly_mean_err = pd.merge(hourly_mean_err1, hourly_quartile2)
-
-hourly_median_err1 = pd.merge(hourly_median, hourly_quartile1)
-hourly_median_err = pd.merge(hourly_median_err1, hourly_quartile2)
-
 ##############################################################################
+#### ----------------------- Save to File ------------------------------- ####
 ##############################################################################
 
 # remove redundant date and time cols
 del tot_frame["time"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date"]
+del hourly_averaged_mean["#date_x"], hourly_averaged_mean["#date_y"], hourly_averaged_mean["#date"], 
+del hourly_averaged_mean["time_x"], hourly_averaged_mean["time_y"], hourly_averaged_mean["time"]
+del hourly_averaged_mean["status_x"], hourly_averaged_mean["status_y"], hourly_averaged_mean["flags"]
+del hourly_averaged_median["#date_x"], hourly_averaged_median["#date_y"], hourly_averaged_median["#date"]
+del hourly_averaged_median["time_x"], hourly_averaged_median["time_y"], hourly_averaged_median["time"]
+del hourly_averaged_median["status_x"], hourly_averaged_median["status_y"], hourly_averaged_median["flags"]
 
 tot_frame.to_csv("tot_frame.csv", sep = ' ')
-hourly_averaged_median.to_csv("hourly_averaged_median.csv", sep = ' ')
-hourly_averaged_mean.to_csv("hourly_averaged_mean.csv", sep = ' ')
-hourly_mean.to_csv("hourly_mean.csv", sep = ' ')
-hourly_median.to_csv("hourly_median.csv", sep = ' ')
-
-
-hourly_quartile1.columns = hourly_quartile1.columns + "_q1"
-hourly_quartile2.columns = hourly_quartile2.columns + "_q2"
-
-print_cols = ["NO[ppb]", "NO_cal", "NO_corr", "NO2[ppb]", "NO2_cal", "NO2_0","NOx[ppb]", "NOx_cal"]
-hourly_mean.to_csv("hourly_mean_NOx.csv", columns = print_cols , sep = ' ')
-hourly_median.to_csv("hourly_median_NOx.csv", columns = print_cols , sep = ' ')
-
-hourly_quartile1.to_csv("hourly_mean_NOx_q1.csv", columns = ["NO[ppb]_q1", "NO_cal_q1", "NO_corr_q1", "NO2[ppb]_q1", "NO2_cal_q1", "NO2_0_q1", "NOx[ppb]_q1", "NOx_cal_q1"], sep = ' ')
-hourly_quartile2.to_csv("hourly_mean_NOx_q2.csv", columns = ["NO[ppb]_q2", "NO_cal_q2", "NO_corr_q2", "NO2[ppb]_q2", "NO2_cal_q2", "NO2_0_q2", "NOx[ppb]_q2", "NOx_cal_q2"] ,sep = ' ')
+hourly_averaged_median.to_csv("./hourly_data/hourly_averaged_median.csv", sep = ' ', index=False)
+hourly_averaged_mean.to_csv("./hourly_data/hourly_averaged_mean.csv", sep = ' ', index=False)
 
 ##############################################################################
 ##                                                                          ##
@@ -246,32 +223,32 @@ hourly_quartile2.to_csv("hourly_mean_NOx_q2.csv", columns = ["NO[ppb]_q2", "NO_c
 
 # daily_frame["dt"] = pd.to_datetime(daily_frame["Date"] + " " + daily_frame["Time"])
 
-plot_date = pd.to_datetime(tot_frame["#date_x"] + " " + tot_frame["time_x"])
-
-                                     
-                                     
-# Major ticks every month.
-fmt_month = mdates.MonthLocator()
-
-# Minor ticks every.
-fmt_day = mdates.DayLocator()
-
-nplots=3                                    
-fig, axs = plt.subplots(nplots, sharex=True)
-for i in range(0, nplots):
-    axs[i].xaxis.set_major_locator(fmt_month)
-    axs[i].xaxis.set_minor_locator(fmt_day)
-    
-fig.suptitle('NO and O3 corrections')
-axs[0].scatter( tot_frame["#date_x"], tot_frame["NO_cal"])
-axs[0].set_ylabel('$NO_{cal}$')
-axs[1].scatter( tot_frame["#date_x"], tot_frame["NO_corr"] - tot_frame["NO_cal"] )
-axs[1].set_ylabel('$NO_{corr} - NO_{cal}$')
-axs[2].scatter( tot_frame["#date_x"], tot_frame["NO2_0"] - tot_frame["NO2_cal"] )
-axs[2].set_ylabel('$NO_{2corr} - NO_{2cal}$')
-
-
-fig.savefig(resFolder + "NOx_corr.pdf")
+#plot_date = pd.to_datetime(tot_frame["#date_x"] + " " + tot_frame["time_x"])
+#
+#                                     
+#                                     
+## Major ticks every month.
+#fmt_month = mdates.MonthLocator()
+#
+## Minor ticks every.
+#fmt_day = mdates.DayLocator()
+#
+#nplots=3                                    
+#fig, axs = plt.subplots(nplots, sharex=True)
+#for i in range(0, nplots):
+#    axs[i].xaxis.set_major_locator(fmt_month)
+#    axs[i].xaxis.set_minor_locator(fmt_day)
+#    
+#fig.suptitle('NO and O3 corrections')
+#axs[0].scatter( tot_frame["#date_x"], tot_frame["NO_cal"])
+#axs[0].set_ylabel('$NO_{cal}$')
+#axs[1].scatter( tot_frame["#date_x"], tot_frame["NO_corr"] - tot_frame["NO_cal"] )
+#axs[1].set_ylabel('$NO_{corr} - NO_{cal}$')
+#axs[2].scatter( tot_frame["#date_x"], tot_frame["NO2_0"] - tot_frame["NO2_cal"] )
+#axs[2].set_ylabel('$NO_{2corr} - NO_{2cal}$')
+#
+#
+#fig.savefig(resFolder + "NOx_corr.pdf")
 #axs[2].plot( tot_frame["#date"], tot_frame["NO_corr"] - tot_frame["NO_0"])
 #axs[2].set_ylabel('$NO_{corr} - NO_{0}$')
 
