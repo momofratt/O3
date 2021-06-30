@@ -19,6 +19,7 @@ location = "BOS"
 utc = "p00" 
 filepath = "./BOS/"
 resFolder = "./results"
+night_correction = 'ON' # set 'ON' to enable night time correction
 # ####################################################### #
 # ------------- calibration coefficients ---------------  #
 # ####################################################### #
@@ -40,10 +41,15 @@ hourly_averaged_median = pd.DataFrame()
 day_delta = timedelta(days=1) # The size of each step in days
 start_date = date(2021, 5, 1)
 #end_date = date.today()
-end_date = date(2021, 5, 8)
+end_date = date(2021, 5, 13)
 night_offset_corr = 'ON'
 
-############ loop over dates for nightime corrections ####################
+##############################################################################
+### -------- first loop over dates for nightime corrections ---------------###
+##############################################################################
+
+#### create dataframe with NO and O3 measurements for all times ####
+
 for i in range((end_date - start_date).days):
     d = start_date + i*day_delta
     year = str(d.year)
@@ -81,21 +87,40 @@ for i in range((end_date - start_date).days):
         print("merging problem on date " +str(d))
         continue # skip to next day
     
-    ##############################################################################
-    #### --------------- Append daily_frame to tot_frame -------------------- ####
-    ##############################################################################
     night_corr_frame = night_corr_frame.append(daily_frame, ignore_index=True)
 
+##############################################################################
+### --------- 2nd loop over dates for nightime corrections ----------------###
+##############################################################################
+    
+#### evaluate NO mean values for O3>20 ppb and night time (e.g. 00:00-03:00) ####
+    
+mean_daily = pd.DataFrame()
 night_corr_frame.insert(0, "datetime", pd.to_datetime(night_corr_frame["#date"] + " " + night_corr_frame["time"]) )
-night_corr_frame = night_corr_frame.set_index("datetime")
 daily_offset=pd.DataFrame()
+
 for i in range((end_date - start_date).days-1):
     d = start_date + i*day_delta
     d1 = start_date + (i+1)*day_delta
-    night_00_03_frame = night_corr_frame.between_time(datetime.time(0,0,0), datetime.time(3,0,0)) # select rows between given time
-    night_00_03_today_frame = night_00_03_frame[ night_00_03_frame["#date"] == str(d) ]  # select rows on given day
-    night_00_03_today_frame = night_00_03_today_frame.append( night_00_03_frame[ night_00_03_frame["#date"] == str(d1) ])
-    daily_offset = daily_offset.append( night_00_03_today_frame[ night_00_03_today_frame["O3"] > 20 ].mean(), ignore_index=True)  # select rows with O3 > 20pp, then average
+    
+    night_day_frame = night_corr_frame[night_corr_frame["#date"] == str(d) ]    # select day
+    night_day_frame = night_day_frame.append( night_corr_frame[night_corr_frame["#date"] == str(d1) ], ignore_index=True ) # select day+1
+    night_day_frame = night_day_frame.set_index("datetime")                                                                    
+    night_00_03_frame = night_day_frame.between_time(datetime.time(0,0,0), datetime.time(3,0,0)) # select rows between given time
+                                                              
+    mean_daily = night_00_03_frame[ night_00_03_frame["O3"] > 20 ].mean().to_frame().transpose()
+    mean_daily.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
+    daily_offset = daily_offset.append( mean_daily, ignore_index=True)
+
+
+offset_dates_frame = night_corr_frame["datetime"].to_frame()
+offset_frame = offset_dates_frame.merge(daily_offset, how='left', left_on='datetime', right_on='datetime')
+del(offset_frame["O3"], offset_frame["daydec"])
+offset_frame.interpolate(inplace=True)
+offset_frame.rename(columns={"NO[ppb]":"NO_offset[ppb]"}, inplace=True)
+del(night_corr_frame, offset_dates_frame)
+
+
     
 for i in range((end_date - start_date).days):
     d = start_date + i*day_delta
@@ -137,18 +162,31 @@ for i in range((end_date - start_date).days):
         continue # skip to next day    
     ##############################################################################
     ##                                                                          ##
-    ##                         Nighttime corrections                            ##
+    ##                        Nighttime corrections                             ##
     ##                                                                          ##
     ##############################################################################
-   # if night_offset_corr == 'ON':
+    if night_correction == 'ON':
+        daily_offset_frame = offset_frame[offset_frame["datetime"].dt.date == d]
+        daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date_x"] + " " + daily_frame["time_x"] ))
+        ###########################################################
+        ####### questo merge cambia la lunghezza di daily_frame quando si va a calcolare il between_time nell'hourly average
+        ###########################################################
+        daily_frame = daily_frame.merge(daily_offset_frame, how='left', left_on='datetime', right_on='datetime')  
+        daily_frame = daily_frame.set_index("datetime")
         
-
+        NO_numpy = daily_frame["NO[ppb]"].to_numpy()
+        off_numpy = daily_frame["NO_offset[ppb]"].to_numpy()
+        daily_frame["NO[ppb]"] = (NO_numpy + off_numpy)
+    else:
+        daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date_x"] + " " + daily_frame["time_x"] ))
+        daily_frame = daily_frame.set_index("datetime")
 
     ##############################################################################
     ##                                                                          ##
     ##                        Calibration corrections                           ##
     ##                                                                          ##
     ##############################################################################
+    
     daily_frame["NO_cal"] = daily_frame["NO[ppb]"] * slopeNO + offsetNO
     daily_frame["NOx_cal1"] = daily_frame["NOx[ppb]"] * slopeNOx + offsetNOx  
     daily_frame["NO2_cal"] = ( daily_frame["NOx_cal1"] - daily_frame["NO_cal"] ) / Sc
@@ -190,27 +228,6 @@ for i in range((end_date - start_date).days):
     daily_frame["NO_corr"] = daily_frame["NO_0"] * ( 1 + alpha * daily_frame["water_vapour_conc[ppth]"] )
 
     ##############################################################################
-    #### ------ calculate NO2 using NO_corr (RH corrected) values ----------- ####
-    ##############################################################################
-
-    # same as before replacing NO_cal with NO_corr
-    #daily_frame["NO_F1"] = daily_frame["NO_corr"] 
-    #daily_frame["NO_F2"] = Sc * daily_frame["NO2_cal"] + daily_frame["NO_corr"]  
-    
-    #daily_frame["NO_00"] = daily_frame["NO_F1"] * exp( daily_frame["KO3"] * tE1 ) 
-    #daily_frame["NO2_RHcorr"] = ( Jc + daily_frame["KO3"] ) / Jc * ( daily_frame["NO_F2"] - daily_frame["NO_F1"] * exp( -( daily_frame["KO3"] * (tc2-tc1) + Jc*tc2 ) )) / ( 1 - exp(-(daily_frame["KO3"] + Jc ) * tc2) ) - daily_frame["NO_00"]
-    
-    # plotting differences
-    
-    #fig1, axs1 = plt.subplots(2, sharex=True)
-    #axs1[0].plot( daily_frame["day_dec"], daily_frame["NO2_0"] )
-    #axs1[0].plot( daily_frame["day_dec"], daily_frame["NO2_RHcorr"]  )
-    #axs1[0].set_ylabel('$NO_2$')
-    
-    #axs1[1].plot( daily_frame["day_dec"], daily_frame["NO2_RHcorr"] - daily_frame["NO2_0"] )
-    #axs1[1].set_ylabel('$\Delta NO_2$')
-
-    ##############################################################################
     #### --------------- Append daily_frame to tot_frame -------------------- ####
     ##############################################################################
     tot_frame = tot_frame.append(daily_frame, ignore_index=True)
@@ -218,8 +235,7 @@ for i in range((end_date - start_date).days):
     ##############################################################################
     #### -------------- Evaluate hourly averaged data ----------------------- ####
     ##############################################################################
-    daily_frame.insert(0, "datetime", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
-    daily_frame = daily_frame.set_index("datetime")
+
     for j in range (0, 24):
         mean_daily = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).mean().to_frame().transpose() #evaluate hourly mean of daily_frame
         mean_daily.insert(0, "ddate", d)
