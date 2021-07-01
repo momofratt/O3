@@ -41,7 +41,7 @@ hourly_averaged_median = pd.DataFrame()
 day_delta = timedelta(days=1) # The size of each step in days
 start_date = date(2021, 5, 1)
 #end_date = date.today()
-end_date = date(2021, 5, 13)
+end_date = date(2021, 6, 7)
 night_offset_corr = 'ON'
 
 ##############################################################################
@@ -95,7 +95,7 @@ for i in range((end_date - start_date).days):
     
 #### evaluate NO mean values for O3>20 ppb and night time (e.g. 00:00-03:00) ####
     
-mean_daily = pd.DataFrame()
+hourly_mean = pd.DataFrame()
 night_corr_frame.insert(0, "datetime", pd.to_datetime(night_corr_frame["#date"] + " " + night_corr_frame["time"]) )
 daily_offset=pd.DataFrame()
 
@@ -108,9 +108,9 @@ for i in range((end_date - start_date).days-1):
     night_day_frame = night_day_frame.set_index("datetime")                                                                    
     night_00_03_frame = night_day_frame.between_time(datetime.time(0,0,0), datetime.time(3,0,0)) # select rows between given time
                                                               
-    mean_daily = night_00_03_frame[ night_00_03_frame["O3"] > 20 ].mean().to_frame().transpose()
-    mean_daily.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
-    daily_offset = daily_offset.append( mean_daily, ignore_index=True)
+    hourly_mean = night_00_03_frame[ night_00_03_frame["O3"] > 20 ].mean().to_frame().transpose()
+    hourly_mean.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
+    daily_offset = daily_offset.append( hourly_mean, ignore_index=True)
 
 
 offset_dates_frame = night_corr_frame["datetime"].to_frame()
@@ -230,30 +230,33 @@ for i in range((end_date - start_date).days):
     ##############################################################################
     #### --------------- Append daily_frame to tot_frame -------------------- ####
     ##############################################################################
-    tot_frame = tot_frame.append(daily_frame, ignore_index=True)
+    tot_frame = tot_frame.append(daily_frame)
     
     ##############################################################################
     #### -------------- Evaluate hourly averaged data ----------------------- ####
     ##############################################################################
+    ### c'è un problema: in data 4/5/2021 la lunghezza di hourly_mean è diversa da hourly_averaged_mean e non riesce a fare il .append(hourly_mean)
+    ### cosa strana: se fai il ciclo tipo fino al 10 maggio funziona, se lo fai fino al 15 si blocca        
 
-    for j in range (0, 24):
-        mean_daily = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).mean().to_frame().transpose() #evaluate hourly mean of daily_frame
-        mean_daily.insert(0, "ddate", d)
-        mean_daily.insert(1, "ttime", str(datetime.time(j,0,0)))
-        hourly_averaged_mean = hourly_averaged_mean.append( mean_daily , ignore_index=True ) #append to the frame that contains hourly averaged data
+    # for j in range (0, 24): 
+    #     hourly_mean = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).mean().to_frame().transpose() #evaluate hourly mean of daily_frame
+    #     #print(hourly_mean)
+    #     hourly_mean.insert(0, "ddate", d)
+    #     hourly_mean.insert(1, "ttime", str(datetime.time(j,0,0)))
+    #     hourly_averaged_mean = hourly_averaged_mean.append( hourly_mean , ignore_index=True ) #append to the frame that contains hourly averaged data
         
-        #the same replacing mean with median:
-        median_daily = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).median().to_frame().transpose()
-        median_daily.insert(0, "ddate", d)
-        median_daily.insert(1, "ttime", str(datetime.time(j,0,0)))
-        hourly_averaged_median = hourly_averaged_median.append( median_daily , ignore_index=True )
-
+    #     #the same replacing mean with median:
+    #     hourly_median = daily_frame.between_time(str(datetime.time(j,0,0)), str(datetime.time(j,59,0))).median().to_frame().transpose()
+    #     hourly_median.insert(0, "ddate", d)
+    #     hourly_median.insert(1, "ttime", str(datetime.time(j,0,0)))
+    #     hourly_averaged_median = hourly_averaged_median.append( hourly_median , ignore_index=True )
+    
 ##############################################################################
 #### ------------- Evaluate hourly mean and median ---------------------- ####
 ##############################################################################
 
-tot_frame.insert(0, "datetime", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
-tot_frame = tot_frame.set_index("datetime")
+#tot_frame.insert(0, "date_time", pd.to_datetime( tot_frame["#date_x"] + " " +tot_frame["time_x"] ))
+#tot_frame = tot_frame.set_index("date_time")
 
 for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .median() puoi ottenere valori medi)
      hourly = pd.DataFrame()
@@ -267,17 +270,20 @@ for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .me
 ##############################################################################
 
 # remove redundant date and time cols
-del tot_frame["time"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date"]
-del hourly_averaged_mean["#date_x"], hourly_averaged_mean["#date_y"], hourly_averaged_mean["#date"], 
-del hourly_averaged_mean["time_x"], hourly_averaged_mean["time_y"], hourly_averaged_mean["time"]
-del hourly_averaged_mean["status_x"], hourly_averaged_mean["status_y"], hourly_averaged_mean["flags"]
-del hourly_averaged_median["#date_x"], hourly_averaged_median["#date_y"], hourly_averaged_median["#date"]
-del hourly_averaged_median["time_x"], hourly_averaged_median["time_y"], hourly_averaged_median["time"]
-del hourly_averaged_median["status_x"], hourly_averaged_median["status_y"], hourly_averaged_median["flags"]
-
+del tot_frame["time_x"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date_x"]
 tot_frame.to_csv("tot_frame.csv", sep = ' ')
-hourly_averaged_median.to_csv("./hourly_data/hourly_averaged_median.csv", sep = ' ', index=False)
-hourly_averaged_mean.to_csv("./hourly_data/hourly_averaged_mean.csv", sep = ' ', index=False)
+
+
+# del hourly_averaged_mean["#date_x"], hourly_averaged_mean["#date_y"], hourly_averaged_mean["#date"], 
+# del hourly_averaged_mean["time_x"], hourly_averaged_mean["time_y"], hourly_averaged_mean["time"]
+# del hourly_averaged_mean["status_x"], hourly_averaged_mean["status_y"], hourly_averaged_mean["flags"]
+# del hourly_averaged_median["#date_x"], hourly_averaged_median["#date_y"], hourly_averaged_median["#date"]
+# del hourly_averaged_median["time_x"], hourly_averaged_median["time_y"], hourly_averaged_median["time"]
+# del hourly_averaged_median["status_x"], hourly_averaged_median["status_y"], hourly_averaged_median["flags"]
+#hourly_averaged_median.to_csv("./hourly_data/hourly_averaged_median.csv", sep = ' ', index=False)
+# hourly_averaged_mean.to_csv("./hourly_data/hourly_averaged_mean.csv", sep = ' ', index=False)
+
+
 
 
 
