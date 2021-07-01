@@ -180,7 +180,8 @@ for i in range((end_date - start_date).days):
     else:
         daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date_x"] + " " + daily_frame["time_x"] ))
         daily_frame = daily_frame.set_index("datetime")
-
+    
+    daily_frame.fillna(-999,inplace=True)
     ##############################################################################
     ##                                                                          ##
     ##                        Calibration corrections                           ##
@@ -231,7 +232,7 @@ for i in range((end_date - start_date).days):
     #### --------------- Append daily_frame to tot_frame -------------------- ####
     ##############################################################################
     tot_frame = tot_frame.append(daily_frame)
-    
+    tot_frame.fillna(-999,inplace=True)
     ##############################################################################
     #### -------------- Evaluate hourly averaged data ----------------------- ####
     ##############################################################################
@@ -263,7 +264,7 @@ for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .me
      hourly = hourly.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))), ignore_index=True )
      hourly.rename(columns={"#date_x": "date"}, inplace = True)
      hourly.to_csv("./hourly_data/hour"+str(k)+".csv", sep=' ', index=False)
-     del(hourly)
+     #del(hourly)
 
 ##############################################################################
 #### ----------------------- Save to File ------------------------------- ####
