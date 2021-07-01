@@ -42,7 +42,6 @@ day_delta = timedelta(days=1) # The size of each step in days
 start_date = date(2021, 5, 1)
 #end_date = date.today()
 end_date = date(2021, 6, 7)
-night_offset_corr = 'ON'
 
 ##############################################################################
 ### -------- first loop over dates for nightime corrections ---------------###
@@ -112,13 +111,28 @@ for i in range((end_date - start_date).days-1):
     hourly_mean.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
     daily_offset = daily_offset.append( hourly_mean, ignore_index=True)
 
+### create offset_frame using daily_offset. daily_offset data are reported once a day at 12:00:00.
+### the temporary frame offset_dates_frame is created in order to obtain a frame with all the times
+### the daily_offset frame is then merged to offset_dates_frame in order to obtain a frame with nan values everywhere except at 12:00:00  
+### the obtained frame is then interpolated in order to obtain corrections at all times
 
 offset_dates_frame = night_corr_frame["datetime"].to_frame()
 offset_frame = offset_dates_frame.merge(daily_offset, how='left', left_on='datetime', right_on='datetime')
-del(offset_frame["O3"], offset_frame["daydec"])
+del offset_frame["daydec"]
 offset_frame.interpolate(inplace=True)
 offset_frame.rename(columns={"NO[ppb]":"NO_offset[ppb]"}, inplace=True)
-del(night_corr_frame, offset_dates_frame)
+
+if night_correction=='ON' :  
+     ### BUG:: se la data parte dopo il 1/5 questo rigo da noia perché c'è gia la colonna "#@date" o "time"
+    del offset_frame["#date"], offset_frame["time"]
+    offset_frame.insert(0, "date", offset_frame["datetime"].dt.date)
+    offset_frame.insert(1, "time", offset_frame["datetime"].dt.time)
+    offset_frame.fillna(-999,inplace=True)
+    offset_frame.to_csv("offset_frame.csv", sep = ' ', index=False)
+
+
+del offset_frame["O3"]
+del night_corr_frame, offset_dates_frame
 
 
     
@@ -176,7 +190,7 @@ for i in range((end_date - start_date).days):
         
         NO_numpy = daily_frame["NO[ppb]"].to_numpy()
         off_numpy = daily_frame["NO_offset[ppb]"].to_numpy()
-        daily_frame["NO[ppb]"] = (NO_numpy + off_numpy)
+        daily_frame["NO[ppb]"] = (NO_numpy - off_numpy)
     else:
         daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date_x"] + " " + daily_frame["time_x"] ))
         daily_frame = daily_frame.set_index("datetime")
@@ -263,7 +277,10 @@ for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .me
      hourly = pd.DataFrame()
      hourly = hourly.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))), ignore_index=True )
      hourly.rename(columns={"#date_x": "date"}, inplace = True)
-     hourly.to_csv("./hourly_data/hour"+str(k)+".csv", sep=' ', index=False)
+     if night_correction=='ON':
+         hourly.to_csv("./hourly_data/hour"+str(k)+"_night_corr.csv", sep=' ', index=False)
+     else:
+         hourly.to_csv("./hourly_data/hour"+str(k)+".csv", sep=' ', index=False)
      #del(hourly)
 
 ##############################################################################
@@ -272,7 +289,10 @@ for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .me
 
 # remove redundant date and time cols
 del tot_frame["time_x"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date_x"]
-tot_frame.to_csv("tot_frame.csv", sep = ' ')
+if night_correction=='ON' :     
+    tot_frame.to_csv("tot_frame_night_corr.csv", sep = ' ')
+else:
+    tot_frame.to_csv("tot_frame.csv", sep = ' ')
 
 
 # del hourly_averaged_mean["#date_x"], hourly_averaged_mean["#date_y"], hourly_averaged_mean["#date"], 
