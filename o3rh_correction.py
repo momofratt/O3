@@ -8,6 +8,7 @@ from math import log
 from numpy import exp
 from datetime import date, timedelta
 import datetime
+from math import nan
 import matplotlib.pyplot as plt
 ##############################################################################
 ### ----------------- defining filenames and paths ----------------------- ###
@@ -44,7 +45,7 @@ start_date = date(2021, 5, 1)
 end_date = date(2021, 6, 7)
 
 ##############################################################################
-### -------- first loop over dates for nightime corrections ---------------###
+### ---- 1st loop over dates to build single frame from data files --------###
 ##############################################################################
 
 #### create dataframe with NO and O3 measurements for all times ####
@@ -81,59 +82,73 @@ for i in range((end_date - start_date).days):
     nitrate_frame.rename(columns={"DayDec": "daydec"}, inplace = True)
     
     try:
-        daily_frame = pd.merge(nitrate_frame, ozone_frame, on='daydec')  
+        daily_night_corr_frame = pd.merge(nitrate_frame, ozone_frame, on='daydec')  
     except:
         print("merging problem on date " +str(d))
         continue # skip to next day
     
-    night_corr_frame = night_corr_frame.append(daily_frame, ignore_index=True)
+    night_corr_frame = night_corr_frame.append(daily_night_corr_frame, ignore_index=True)
 
 ##############################################################################
-### --------- 2nd loop over dates for nightime corrections ----------------###
+### -------- 2nd loop over dates to evaluate nightime offset ------------- ###
 ##############################################################################
     
-#### evaluate NO mean values for O3>20 ppb and night time (e.g. 00:00-03:00) ####
+#### evaluate NO mean values for O3>20 ppb at night time (e.g. 22:00-01:00) ####
     
 hourly_mean = pd.DataFrame()
 night_corr_frame.insert(0, "datetime", pd.to_datetime(night_corr_frame["#date"] + " " + night_corr_frame["time"]) )
 daily_offset=pd.DataFrame()
 
-for i in range((end_date - start_date).days-1):
+for i in range((end_date - start_date).days-2):
+    ### three daye are required in order to perform the night correction average. If you need to average data between e.g. 22:00 and 2:00 you need no acces to day-1 (d_1)
+    ### furthermore, if you need a 1.5 days running average you need to acces also to d+1 (d1) data
+    d_1 = start_date + (i-1)*day_delta
     d = start_date + i*day_delta
     d1 = start_date + (i+1)*day_delta
+    if d==start_date:#skip first day
+        continue
     
-    night_day_frame = night_corr_frame[night_corr_frame["#date"] == str(d) ]    # select day
-    night_day_frame = night_day_frame.append( night_corr_frame[night_corr_frame["#date"] == str(d1) ], ignore_index=True ) # select day+1
+    night_day_frame = night_corr_frame[night_corr_frame["#date"] == str(d_1) ]    # select day
+    night_day_frame = night_day_frame.append(night_corr_frame[night_corr_frame["#date"] == str(d)], ignore_index=True)
+    night_day_frame = night_day_frame.append(night_corr_frame[night_corr_frame["#date"] == str(d1)], ignore_index=True)
     night_day_frame = night_day_frame.set_index("datetime")                                                                    
-    night_00_03_frame = night_day_frame.between_time(datetime.time(0,0,0), datetime.time(3,0,0)) # select rows between given time
-                                                              
-    hourly_mean = night_00_03_frame[ night_00_03_frame["O3"] > 20 ].mean().to_frame().transpose()
-    hourly_mean.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
-    daily_offset = daily_offset.append( hourly_mean, ignore_index=True)
+    
+    night_00_03_frame = night_day_frame[ str(d_1) + " " + str(datetime.time(21,0,0)) : str(d) + " " + str(datetime.time(0,0,0)) ]
+    night_00_03_frame = night_00_03_frame.append(night_day_frame[ str(d) + " " + str(datetime.time(21,0,0)) : str(d1) + " " + str(datetime.time(0,0,0)) ], ignore_index=True)                               
+        
+    nightly_mean = night_00_03_frame[ night_00_03_frame["O3"] > 20 ].median().to_frame().transpose()
+    nightly_mean.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
+    nightly_mean.rename(columns={"NO[ppb]":"NO_offset[ppb]"}, inplace=True)
+    if nightly_mean["NO_offset[ppb]"].to_numpy() > 0.1:
+        nightly_mean["NO_offset[ppb]"] = nan
+    daily_offset = daily_offset.append( nightly_mean, ignore_index=True)
 
 ### create offset_frame using daily_offset. daily_offset data are reported once a day at 12:00:00.
 ### the temporary frame offset_dates_frame is created in order to obtain a frame with all the times
 ### the daily_offset frame is then merged to offset_dates_frame in order to obtain a frame with nan values everywhere except at 12:00:00  
 ### the obtained frame is then interpolated in order to obtain corrections at all times
-
 offset_dates_frame = night_corr_frame["datetime"].to_frame()
 offset_frame = offset_dates_frame.merge(daily_offset, how='left', left_on='datetime', right_on='datetime')
 del offset_frame["daydec"]
 offset_frame.interpolate(inplace=True)
-offset_frame.rename(columns={"NO[ppb]":"NO_offset[ppb]"}, inplace=True)
 
+#################### export offset_frame to csv ####################
 if night_correction=='ON' :  
-     ### BUG:: se la data parte dopo il 1/5 questo rigo da noia perché c'è gia la colonna "#@date" o "time"
-    del offset_frame["#date"], offset_frame["time"]
+    ### BUG:: se la data parte dopo il 1/5 questo rigo da noia perché c'è gia la colonna "#@date" o "time"
+    #del offset_frame["#date"] offset_frame["time"]
     offset_frame.insert(0, "date", offset_frame["datetime"].dt.date)
     offset_frame.insert(1, "time", offset_frame["datetime"].dt.time)
     offset_frame.fillna(-999,inplace=True)
     offset_frame.to_csv("offset_frame.csv", sep = ' ', index=False)
 
+####################################################################
 
 del offset_frame["O3"]
 del night_corr_frame, offset_dates_frame
 
+###############################################################################
+### -- 3rd loop over dates for calibration, RH, O3 and night corrections -- ###
+###############################################################################
 
     
 for i in range((end_date - start_date).days):
@@ -281,20 +296,39 @@ for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .me
          hourly.to_csv("./hourly_data/hour"+str(k)+"_night_corr.csv", sep=' ', index=False)
      else:
          hourly.to_csv("./hourly_data/hour"+str(k)+".csv", sep=' ', index=False)
-     #del(hourly)
-
+         
 ##############################################################################
 #### ----------------------- Save to File ------------------------------- ####
 ##############################################################################
 
-# remove redundant date and time cols
+#### remove redundant date and time cols
 del tot_frame["time_x"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date_x"]
+
 if night_correction=='ON' :     
     tot_frame.to_csv("tot_frame_night_corr.csv", sep = ' ')
 else:
     tot_frame.to_csv("tot_frame.csv", sep = ' ')
 
 
+###############################################################################
+### ----- 4th loop over dates to obtain night data in minutes gnuplot ----- ###
+###############################################################################
+
+night_frame = pd.DataFrame()
+ 
+for i in range((end_date - start_date).days):
+    d_1 = start_date + (i-1)*day_delta
+    d = start_date + i*day_delta
+    
+    if d==start_date:#skip first day
+        continue
+    
+    night_frame = night_frame.append( tot_frame[ str(d_1) + " " + str(datetime.time(22,0,0)) : str(d) + " " + str(datetime.time(1,0,0)) ])                               
+
+# night_frame.insert(1, "ddate", night_frame["datetime"].dt.date )
+# night_frame.insert(2, "ttime", night_frame["datetime"].dt.time )
+
+night_frame.to_csv("night_frame.csv", sep=' ')
 # del hourly_averaged_mean["#date_x"], hourly_averaged_mean["#date_y"], hourly_averaged_mean["#date"], 
 # del hourly_averaged_mean["time_x"], hourly_averaged_mean["time_y"], hourly_averaged_mean["time"]
 # del hourly_averaged_mean["status_x"], hourly_averaged_mean["status_y"], hourly_averaged_mean["flags"]
@@ -303,9 +337,6 @@ else:
 # del hourly_averaged_median["status_x"], hourly_averaged_median["status_y"], hourly_averaged_median["flags"]
 #hourly_averaged_median.to_csv("./hourly_data/hourly_averaged_median.csv", sep = ' ', index=False)
 # hourly_averaged_mean.to_csv("./hourly_data/hourly_averaged_mean.csv", sep = ' ', index=False)
-
-
-
 
 
 ##############################################################################
