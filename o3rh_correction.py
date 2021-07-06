@@ -10,28 +10,31 @@ from datetime import date, timedelta
 import datetime
 from math import nan
 import matplotlib.pyplot as plt
+
 ##############################################################################
 ### ----------------- defining filenames and paths ----------------------- ###
 ##############################################################################
-
 # defining file references
 instrument = ["meteo", "O3tei49i", "T200up"]
 location = "BOS"
 utc = "p00" 
 filepath = "./BOS/"
 resFolder = "./results"
-night_correction = 'ON' # set 'ON' to enable night time correction
+
 # ####################################################### #
 # ------------- calibration coefficients ---------------  #
 # ####################################################### #
-slopeNO = 1.06270603
-offsetNO = -0.1934
-slopeNOx = 1.06270603
-offsetNOx = -0.319
-Sc = 0.95  # conversion efficiency
+slopeNO =    1.1666902
+offsetNO =   0.290025
+slopeNOx =   1.178434
+offsetNOx =  0.507067
+Sc = 0.99  # conversion efficiency
+Sc2 = 1.07 # artifact effciency. It is used to divide NO2 if Sc>1.
 if(Sc>1):
     print("ERROR: efficiency greater then 1")
 
+night_correction = 'ON' # set 'ON' to enable night time correction
+const_offset_NO = 0 # [ppb] constant offset to shift NO measurements. NB it is applied only if night_correction=='OFF'
 
 night_corr_frame = pd.DataFrame()
 tot_frame = pd.DataFrame()
@@ -40,8 +43,7 @@ hourly_averaged_mean = pd.DataFrame()
 hourly_averaged_median = pd.DataFrame()
 
 day_delta = timedelta(days=1) # The size of each step in days
-start_date = date(2021, 5, 1)
-#end_date = date.today()
+start_date = date(2021, 4, 29)
 end_date = date(2021, 6, 7)
 
 ##############################################################################
@@ -113,14 +115,17 @@ for i in range((end_date - start_date).days-2):
     night_day_frame = night_day_frame.append(night_corr_frame[night_corr_frame["#date"] == str(d1)], ignore_index=True)
     night_day_frame = night_day_frame.set_index("datetime")                                                                    
     
+    night_day_frame["NO[ppb]"] = night_day_frame["NO[ppb]"] * slopeNO + offsetNO  # apply calibration to NO raw data before the evaluation of the night time offset
+
     night_00_03_frame = night_day_frame[ str(d_1) + " " + str(datetime.time(21,0,0)) : str(d) + " " + str(datetime.time(0,0,0)) ]
     night_00_03_frame = night_00_03_frame.append(night_day_frame[ str(d) + " " + str(datetime.time(21,0,0)) : str(d1) + " " + str(datetime.time(0,0,0)) ], ignore_index=True)                               
         
     nightly_mean = night_00_03_frame[ night_00_03_frame["O3"] > 20 ].median().to_frame().transpose()
     nightly_mean.insert(0, "datetime", pd.to_datetime(str(d) + " " + str(datetime.time(12,0,0)) ) )
-    nightly_mean.rename(columns={"NO[ppb]":"NO_offset[ppb]"}, inplace=True)
-    if nightly_mean["NO_offset[ppb]"].to_numpy() > 0.1:
-        nightly_mean["NO_offset[ppb]"] = nan
+    nightly_mean.rename(columns={"NO[ppb]":"NO_night_offset[ppb]"}, inplace=True)
+    
+    if nightly_mean["NO_night_offset[ppb]"].to_numpy() > 0.1:  # if NO_offset is too large replace with NaN values, then interpolate to obtain values where NO_offset > 0
+        nightly_mean["NO_night_offset[ppb]"] = nan
     daily_offset = daily_offset.append( nightly_mean, ignore_index=True)
 
 ### create offset_frame using daily_offset. daily_offset data are reported once a day at 12:00:00.
@@ -185,32 +190,14 @@ for i in range((end_date - start_date).days):
     
     try:
         nit_oz_frame = pd.merge(nitrate_frame, ozone_frame, on='daydec')  
+        del nit_oz_frame["time_y"], nit_oz_frame["#date_y"]
         daily_frame = pd.merge( nit_oz_frame, meteo_frame, on = 'daydec')
+        del daily_frame["time"], daily_frame["#date"]
+        daily_frame.rename(columns={"time_x":"time","#date_x":"#date"}, inplace=True)
     except:
         print("merging problem on date " +str(d))
         continue # skip to next day    
-    ##############################################################################
-    ##                                                                          ##
-    ##                        Nighttime corrections                             ##
-    ##                                                                          ##
-    ##############################################################################
-    if night_correction == 'ON':
-        daily_offset_frame = offset_frame[offset_frame["datetime"].dt.date == d]
-        daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date_x"] + " " + daily_frame["time_x"] ))
-        ###########################################################
-        ####### questo merge cambia la lunghezza di daily_frame quando si va a calcolare il between_time nell'hourly average
-        ###########################################################
-        daily_frame = daily_frame.merge(daily_offset_frame, how='left', left_on='datetime', right_on='datetime')  
-        daily_frame = daily_frame.set_index("datetime")
-        
-        NO_numpy = daily_frame["NO[ppb]"].to_numpy()
-        off_numpy = daily_frame["NO_offset[ppb]"].to_numpy()
-        daily_frame["NO[ppb]"] = (NO_numpy - off_numpy)
-    else:
-        daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date_x"] + " " + daily_frame["time_x"] ))
-        daily_frame = daily_frame.set_index("datetime")
     
-    daily_frame.fillna(-999,inplace=True)
     ##############################################################################
     ##                                                                          ##
     ##                        Calibration corrections                           ##
@@ -219,8 +206,34 @@ for i in range((end_date - start_date).days):
     
     daily_frame["NO_cal"] = daily_frame["NO[ppb]"] * slopeNO + offsetNO
     daily_frame["NOx_cal1"] = daily_frame["NOx[ppb]"] * slopeNOx + offsetNOx  
-    daily_frame["NO2_cal"] = ( daily_frame["NOx_cal1"] - daily_frame["NO_cal"] ) / Sc
+    daily_frame["NO2_cal"] = ( daily_frame["NOx_cal1"] - daily_frame["NO_cal"] ) / Sc2 # artifact efficiency
     daily_frame["NOx_cal"] = daily_frame["NO_cal"] + daily_frame["NO2_cal"]
+    
+    ##############################################################################
+    ##                                                                          ##
+    ##                        Nighttime corrections                             ##
+    ##                                                                          ##
+    ##############################################################################
+    if night_correction == 'ON':
+        daily_offset_frame = offset_frame[offset_frame["datetime"].dt.date == d]
+        daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date"] + " " + daily_frame["time"] ))
+        ###########################################################
+        ####### questo merge cambia la lunghezza di daily_frame quando si va a calcolare il between_time nell'hourly average
+        ###########################################################
+        daily_frame = daily_frame.merge(daily_offset_frame, how='left', left_on='datetime', right_on='datetime')  
+        daily_frame = daily_frame.set_index("datetime")
+        
+        NO_numpy = daily_frame["NO_cal"].to_numpy()
+        off_numpy = daily_frame["NO_night_offset[ppb]"].to_numpy()
+        daily_frame.insert(len(daily_frame.columns), "NO_night[ppb]", (NO_numpy - off_numpy))
+    else:
+        NO_numpy = daily_frame["NO_cal"].to_numpy()
+        daily_frame.insert(len(daily_frame.columns), "NO_night[ppb]", (NO_numpy + const_offset_NO))  #add constant offset 
+        daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date"] + " " + daily_frame["time"] ))
+        daily_frame = daily_frame.set_index("datetime")
+    
+    daily_frame.fillna(-999,inplace=True)
+
 
     ##############################################################################
     ##                                                                          ##
@@ -260,8 +273,9 @@ for i in range((end_date - start_date).days):
     ##############################################################################
     #### --------------- Append daily_frame to tot_frame -------------------- ####
     ##############################################################################
-    tot_frame = tot_frame.append(daily_frame)
-    tot_frame.fillna(-999,inplace=True)
+    if i>1: #skip first day (interpolation problems)
+        tot_frame = tot_frame.append(daily_frame)
+        tot_frame.fillna(-999,inplace=True)
     ##############################################################################
     #### -------------- Evaluate hourly averaged data ----------------------- ####
     ##############################################################################
@@ -291,7 +305,7 @@ for i in range((end_date - start_date).days):
 for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .median() puoi ottenere valori medi)
      hourly = pd.DataFrame()
      hourly = hourly.append( tot_frame.between_time(str(datetime.time(k,0,0)), str(datetime.time(k,59,0))), ignore_index=True )
-     hourly.rename(columns={"#date_x": "date"}, inplace = True)
+     hourly.rename(columns={"#date": "date"}, inplace = True)
      if night_correction=='ON':
          hourly.to_csv("./hourly_data/hour"+str(k)+"_night_corr.csv", sep=' ', index=False)
      else:
@@ -302,33 +316,57 @@ for k in range(0, 24):  #crea output file per ogni ora. Calcolando .mean() e .me
 ##############################################################################
 
 #### remove redundant date and time cols
-del tot_frame["time_x"], tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date_x"]
+ #del  tot_frame["#date_y"], tot_frame["time_y"], tot_frame["#date_x"]
 
 if night_correction=='ON' :     
     tot_frame.to_csv("tot_frame_night_corr.csv", sep = ' ')
 else:
     tot_frame.to_csv("tot_frame.csv", sep = ' ')
 
+###### AGGUNGERE COLONNE DI NO CORRETTI #################
+if night_correction=='ON':
+    NO_cols = ["#date", "time", "daydec", "NO[ppb]", "NO2[ppb]", "NOx[ppb]", "Pre", "Pre_low", "Pre_High", "T_int", "ReactCellT[C]", "T_Cooler", "PMT_V", "T_NO2_conv", "ReactCellP[incHg]", "O3_flow[cc/m]", "SampleFlow[cc/m]", "status_x", "warning", "NO_night_offset[ppb]", "NO_night[ppb]", "NO_cal", "NO2_cal", "NOx_cal", "NO_corr", "NO2_0"]
+else: 
+    NO_cols = ["#date", "time", "daydec", "NO[ppb]", "NO2[ppb]", "NOx[ppb]", "Pre", "Pre_low", "Pre_High", "T_int", "ReactCellT[C]", "T_Cooler", "PMT_V", "T_NO2_conv", "ReactCellP[incHg]", "O3_flow[cc/m]", "SampleFlow[cc/m]", "status_x", "warning", "NO_night[ppb]", "NO_cal", "NO2_cal", "NOx_cal", "NO_corr", "NO2_0"]
+
+O3_cols = ["#date", "time", "daydec", "O3", "Intensity_A", "Intensity_B", "T_bench", "T_lamp", "T_03_lamp", "Flow_A", "Flow_B", "P", "status_y", "flags"]
+meteo_cols = ["#date", "time", "daydec", "WD_min[Deg]", "WD_ave[Deg]", "WD_max[Deg]", "WS_min[m/s]", "WS_ave[m/sec]", "WS_max[m/sec]", "T_air[C]", "T_internal[C]", "RH[%]", "P_air[hPa]", "Rain_acc[mm]", "Rain_duration[s]", "Rain_intensity[mm/h]", "Hail_acc[hits/cm2]", "Hail_duration[s]", "Hail_intensity[hits/cm2]", "Rain_peack_int[mm/h]", "Hail_peack_int[hits/cm2]", "T_heat[C]", "V_heat[V]", "Vsupply[V]", "Vref3.5[V]"]
+
+tot_frame.rename(columns={"time_x":"time"}, inplace=True)
+
+NO_frame = tot_frame[NO_cols]
+NO_frame.rename(columns={"status_x":"status", "NO2_0":"NO2_corr"}, inplace=True)
+NO_frame.to_csv(instrument[2]+"_"+location+"_"+utc+"_corr.raw", sep = ' ', index=False)
+
+tot_frame.to_csv(instrument[0]+"_"+location+"_"+utc+"_corr.raw", sep = ' ', columns=meteo_cols, index=False)
+
+O3_frame = tot_frame[O3_cols]
+O3_frame.rename(columns={"status_y":"status"}, inplace=True)
+O3_frame.to_csv(instrument[1]+"_"+location+"_"+utc+"_corr.raw", sep = ' ', index=False)
 
 ###############################################################################
 ### ----- 4th loop over dates to obtain night data in minutes gnuplot ----- ###
 ###############################################################################
 
-night_frame = pd.DataFrame()
- 
-for i in range((end_date - start_date).days):
-    d_1 = start_date + (i-1)*day_delta
-    d = start_date + i*day_delta
+#night_frame = pd.DataFrame()
+# 
+#for i in range((end_date - start_date).days):
+#    d_1 = start_date + (i-1)*day_delta
+#    d = start_date + i*day_delta
+#    
+#    if d==start_date:#skip first day
+#        continue
+#    
+#    night_frame = night_frame.append( tot_frame[ str(d_1) + " " + str(datetime.time(22,0,0)) : str(d) + " " + str(datetime.time(1,0,0)) ])                               
+#
+## night_frame.insert(1, "ddate", night_frame["datetime"].dt.date )
+## night_frame.insert(2, "ttime", night_frame["datetime"].dt.time )
+#
+#night_frame.to_csv("night_frame.csv", sep=' ')
     
-    if d==start_date:#skip first day
-        continue
     
-    night_frame = night_frame.append( tot_frame[ str(d_1) + " " + str(datetime.time(22,0,0)) : str(d) + " " + str(datetime.time(1,0,0)) ])                               
-
-# night_frame.insert(1, "ddate", night_frame["datetime"].dt.date )
-# night_frame.insert(2, "ttime", night_frame["datetime"].dt.time )
-
-night_frame.to_csv("night_frame.csv", sep=' ')
+    
+    
 # del hourly_averaged_mean["#date_x"], hourly_averaged_mean["#date_y"], hourly_averaged_mean["#date"], 
 # del hourly_averaged_mean["time_x"], hourly_averaged_mean["time_y"], hourly_averaged_mean["time"]
 # del hourly_averaged_mean["status_x"], hourly_averaged_mean["status_y"], hourly_averaged_mean["flags"]
