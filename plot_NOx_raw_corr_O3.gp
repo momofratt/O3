@@ -28,10 +28,10 @@ set xrange [start_date:end_date]
 ##### NO2 PLOT ######
 
 if (i==1){
-set output "./results/NO_night_corr.eps"
+set output "./results/NOx_raw_corr_O3.eps"
 }
 else{
-set output "./results/NO_night_corr_week_".(i-1).".eps"
+set output "./results/NOx_raw_corr_O3_week_".(i-1).".eps"
 }
 
 set title "NO and NO_2 Corrected Concentrations and Relative Corrections"
@@ -43,31 +43,31 @@ set xtics nomirror out
 set format x '%d/%m'
 set mytics 2
 
-set ylabel "NO^{corr} [ppb]"
+set ylabel "NO^{raw} [ppb]"
 #set ytics 0, 15, 90
 #set yrange[-10:80]
-plot data_file u 1:"NO_corr" w l ls 1 notitle 
+plot data_file u 1:"NO[ppb]" w l ls 1 notitle 
 unset title 
 
 #set ytics -10, 10, 100
 #set yrange [-5:60]
+set ylabel "NO^{corr} [ppb]"
+plot data_file u 1:"NO_corr" w l ls 2 notitle
+unset yrange 
+
+
+set ylabel "NO_2^{raw} [ppb]"
+plot data_file u 1:"NO2[ppb]" w l ls 3 notitle
+unset yrange 
+
 set ylabel "NO_2^{corr} [ppb]"
-plot data_file u 1:"NO2_corr" w l ls 2 notitle
-unset yrange 
-
-
-set ylabel "O3 correction [ppb]"
-plot data_file u 1:(column("NO_0")-column("NO_cal")) w l ls 3 notitle
-unset yrange 
-
-set ylabel "RH correction [ppb]"
-plot data_file u 1:(column("NO_corr")-column("NO_0")) w l ls 4 notitle
+plot data_file u 1:"NO2_corr" w l ls 4 notitle
 unset yrange 
 
 #set format x '%d/%m'
 
-set ylabel "Night correction [ppb]"
-plot data_file_night u 1:(-column("NO_night_offset[ppb]")) w l ls 5 notitle
+set ylabel "O_3 [ppb]"
+plot data_file_night u 1:"O3" w l ls 5 notitle
 unset yrange 
 
 unset multiplot

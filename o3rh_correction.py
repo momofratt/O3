@@ -33,7 +33,7 @@ Sc2 = 1.07 # artifact effciency. It is used to divide NO2 if Sc>1.
 if(Sc>1):
     print("ERROR: efficiency greater then 1")
 
-night_correction = 'ON' # set 'ON' to enable night time correction
+night_correction = 'Off' # set 'ON' to enable night time correction
 const_offset_NO = 0 # [ppb] constant offset to shift NO measurements. NB it is applied only if night_correction=='OFF'
 
 night_corr_frame = pd.DataFrame()
@@ -217,9 +217,10 @@ for i in range((end_date - start_date).days):
     if night_correction == 'ON':
         daily_offset_frame = offset_frame[offset_frame["datetime"].dt.date == d]
         daily_frame.insert(0, "datetime", pd.to_datetime( daily_frame["#date"] + " " + daily_frame["time"] ))
-        ###########################################################
-        ####### questo merge cambia la lunghezza di daily_frame quando si va a calcolare il between_time nell'hourly average
-        ###########################################################
+        ##########################################################################
+        ####### BUG? questo merge cambia la lunghezza di daily_frame quando si va   
+        ####### a calcolare il between_time nella sezione hourly average
+        ##########################################################################
         daily_frame = daily_frame.merge(daily_offset_frame, how='left', left_on='datetime', right_on='datetime')  
         daily_frame = daily_frame.set_index("datetime")
         
@@ -253,8 +254,8 @@ for i in range((end_date - start_date).days):
     Jc = -log(1-Sc)/tc2
     
     # defining NO_E1 and NO_E2 according to "SOPs for NOxy measurement" convenction
-    daily_frame["NO_E1"] = daily_frame["NO_cal"] # measured NO signal [ppb] without photolytic converter
-    daily_frame["NO_E2"] = Sc * daily_frame["NO2_cal"] + daily_frame["NO_cal"]  # measured NO signal [ppb] with photolytic converter
+    daily_frame["NO_E1"] = daily_frame["NO_night[ppb]"] # measured NO signal [ppb] without photolytic converter
+    daily_frame["NO_E2"] = Sc * daily_frame["NO2_cal"] + daily_frame["NO_night[ppb]"]  # measured NO signal [ppb] with photolytic converter
     
     daily_frame["NO_0"] = daily_frame["NO_E1"] * exp( daily_frame["KO3"] * tE1 ) 
     daily_frame["NO2_0"] = ( Jc + daily_frame["KO3"] ) / Jc * ( daily_frame["NO_E2"] - daily_frame["NO_E1"] * exp( -( daily_frame["KO3"] * (tc2-tc1) + Jc*tc2 ) )) / ( 1 - exp(-(daily_frame["KO3"] + Jc ) * tc2) ) - daily_frame["NO_0"]
@@ -269,7 +270,7 @@ for i in range((end_date - start_date).days):
     daily_frame["water_vapour_conc[ppth]"] = 1E5 * daily_frame["RH[%]"] * daily_frame["sat_water_press"] / (daily_frame["P_air[hPa]"]*1E5)
     
     daily_frame["NO_corr"] = daily_frame["NO_0"] * ( 1 + alpha * daily_frame["water_vapour_conc[ppth]"] )
-
+    daily_frame.rename(columns={"NO2_0":"NO2_corr"}, inplace=True)
     ##############################################################################
     #### --------------- Append daily_frame to tot_frame -------------------- ####
     ##############################################################################
@@ -325,9 +326,9 @@ else:
 
 ###### AGGUNGERE COLONNE DI NO CORRETTI #################
 if night_correction=='ON':
-    NO_cols = ["#date", "time", "daydec", "NO[ppb]", "NO2[ppb]", "NOx[ppb]", "Pre", "Pre_low", "Pre_High", "T_int", "ReactCellT[C]", "T_Cooler", "PMT_V", "T_NO2_conv", "ReactCellP[incHg]", "O3_flow[cc/m]", "SampleFlow[cc/m]", "status_x", "warning", "NO_night_offset[ppb]", "NO_night[ppb]", "NO_cal", "NO2_cal", "NOx_cal", "NO_corr", "NO2_0"]
+    NO_cols = ["#date", "time", "daydec", "NO[ppb]", "NO2[ppb]", "NOx[ppb]", "Pre", "Pre_low", "Pre_High", "T_int", "ReactCellT[C]", "T_Cooler", "PMT_V", "T_NO2_conv", "ReactCellP[incHg]", "O3_flow[cc/m]", "SampleFlow[cc/m]", "status_x", "warning", "NO_night_offset[ppb]", "NO_night[ppb]", "NO_cal", "NO2_cal", "NOx_cal", "NO_corr", "NO2_corr"]
 else: 
-    NO_cols = ["#date", "time", "daydec", "NO[ppb]", "NO2[ppb]", "NOx[ppb]", "Pre", "Pre_low", "Pre_High", "T_int", "ReactCellT[C]", "T_Cooler", "PMT_V", "T_NO2_conv", "ReactCellP[incHg]", "O3_flow[cc/m]", "SampleFlow[cc/m]", "status_x", "warning", "NO_night[ppb]", "NO_cal", "NO2_cal", "NOx_cal", "NO_corr", "NO2_0"]
+    NO_cols = ["#date", "time", "daydec", "NO[ppb]", "NO2[ppb]", "NOx[ppb]", "Pre", "Pre_low", "Pre_High", "T_int", "ReactCellT[C]", "T_Cooler", "PMT_V", "T_NO2_conv", "ReactCellP[incHg]", "O3_flow[cc/m]", "SampleFlow[cc/m]", "status_x", "warning", "NO_night[ppb]", "NO_cal", "NO2_cal", "NOx_cal", "NO_corr", "NO2_corr"]
 
 O3_cols = ["#date", "time", "daydec", "O3", "Intensity_A", "Intensity_B", "T_bench", "T_lamp", "T_03_lamp", "Flow_A", "Flow_B", "P", "status_y", "flags"]
 meteo_cols = ["#date", "time", "daydec", "WD_min[Deg]", "WD_ave[Deg]", "WD_max[Deg]", "WS_min[m/s]", "WS_ave[m/sec]", "WS_max[m/sec]", "T_air[C]", "T_internal[C]", "RH[%]", "P_air[hPa]", "Rain_acc[mm]", "Rain_duration[s]", "Rain_intensity[mm/h]", "Hail_acc[hits/cm2]", "Hail_duration[s]", "Hail_intensity[hits/cm2]", "Rain_peack_int[mm/h]", "Hail_peack_int[hits/cm2]", "T_heat[C]", "V_heat[V]", "Vsupply[V]", "Vref3.5[V]"]
@@ -335,7 +336,7 @@ meteo_cols = ["#date", "time", "daydec", "WD_min[Deg]", "WD_ave[Deg]", "WD_max[D
 tot_frame.rename(columns={"time_x":"time"}, inplace=True)
 
 NO_frame = tot_frame[NO_cols]
-NO_frame.rename(columns={"status_x":"status", "NO2_0":"NO2_corr"}, inplace=True)
+NO_frame.rename(columns={"status_x":"status"}, inplace=True)
 NO_frame.to_csv(instrument[2]+"_"+location+"_"+utc+"_corr.raw", sep = ' ', index=False)
 
 tot_frame.to_csv(instrument[0]+"_"+location+"_"+utc+"_corr.raw", sep = ' ', columns=meteo_cols, index=False)
