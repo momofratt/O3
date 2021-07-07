@@ -1,4 +1,4 @@
-set term pdf
+set term eps
 
 hour_path="./hourly_data/"
 night = "_night_corr" # night = "" per fare plot dei files senza night correction
@@ -139,11 +139,11 @@ set key off
 ##################################################################################
 
 
-set output "./results/hourly_box_NO_night_corr_comparison.pdf"
+set output "./results/hourly_box_NO_night_corr_comparison.eps"
 
 set title "Night Correction for NO Concentrations"
 
-set multiplot layout 2,1  margins 0.15,0.85,.1,.9 spacing 0.05,0.05
+set multiplot layout 1,1  margins 0.15,0.85,.1,.9 spacing 0.05,0.05
 # prova per attaccare tutti i plot con stesso asse x. Dice di usare terminal tikz
 # margins 0.05,0.95,.1,.99 spacing 0,0
 set xtics
@@ -158,10 +158,10 @@ plot for [i=0:23] hour_path."hour".i.".csv"  u (i):"NO_corr" ls 1
 unset title
 
 
-set ylabel "NO^{night corr} [ppb]"
-set format x "% g"
-set xlabel "time [h]"
-plot for [i=0:23] hour_path."hour".i.night.".csv" u (i):"NO_corr" ls 1
+#set ylabel "NO^{night corr} [ppb]"
+#set format x "% g"
+#set xlabel "time [h]"
+#plot for [i=0:23] hour_path."hour".i.night.".csv" u (i):"NO_corr" ls 1
 
 unset multiplot
 unset xlabel
@@ -172,11 +172,11 @@ unset xlabel
 ##################################################################################
 
 
-set output "./results/hourly_box_NO_night_corr_comparison_zoom.pdf"
+set output "./results/hourly_box_NO_night_corr_comparison_zoom.eps"
 
 set title "Night Correction for NO Concentrations"
 
-set multiplot layout 2,1  margins 0.15,0.85,.1,.9 spacing 0.05,0.05
+set multiplot layout 1,1  margins 0.15,0.85,.1,.9 spacing 0.05,0.05
 # prova per attaccare tutti i plot con stesso asse x. Dice di usare terminal tikz
 # margins 0.05,0.95,.1,.99 spacing 0,0
 set xtics
@@ -191,10 +191,10 @@ plot for [i=0:23] hour_path."hour".i.".csv"  u (i):"NO_corr" ls 1
 unset title
 
 
-set ylabel "NO_{night corr} [ppb]"
-set format x "% g"
-set xlabel "time [h]"
-plot for [i=0:23] hour_path."hour".i.night.".csv" u (i):"NO_corr" ls 1
+#set ylabel "NO_{night corr} [ppb]"
+#set format x "% g"
+#set xlabel "time [h]"
+#plot for [i=0:23] hour_path."hour".i.night.".csv" u (i):"NO_corr" ls 1
 
 unset multiplot
 unset xlabel

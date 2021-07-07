@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Author: Cosimo Fratticioli
 Contact: c.fratticioli@isac.cnr.it
@@ -33,7 +32,7 @@ Sc2 = 1.07 # artifact effciency. It is used to divide NO2 if Sc>1.
 if(Sc>1):
     print("ERROR: efficiency greater then 1")
 
-night_correction = 'Off' # set 'ON' to enable night time correction
+night_correction = 'ON' # set 'ON' to enable night time correction
 const_offset_NO = 0 # [ppb] constant offset to shift NO measurements. NB it is applied only if night_correction=='OFF'
 
 night_corr_frame = pd.DataFrame()
@@ -59,9 +58,9 @@ for i in range((end_date - start_date).days):
     day = str(d.day)
     # convert date into str using the same format of the filenames e.g. 20210101 
     # need to add "0" to months and days <9
-    if int(d.month) < 9:
+    if int(d.month) < 10:
         month = str(0) + str(d.month)
-    if int(d.day) < 9:
+    if int(d.day) < 10:
         day = str(0) +str(d.day)
 
     # define filenames
@@ -163,9 +162,9 @@ for i in range((end_date - start_date).days):
     day = str(d.day)
     # convert date into str using the same format of the filenames e.g. 20210101 
     # need to add "0" to months and days <9
-    if int(d.month) < 9:
+    if int(d.month) < 10:
         month = str(0) + str(d.month)
-    if int(d.day) < 9:
+    if int(d.day) < 10:
         day = str(0) +str(d.day)
 
     # define filenames
