@@ -202,8 +202,8 @@ for i in range((end_date - start_date).days):
     ##                        Calibration corrections                           ##
     ##                                                                          ##
     ##############################################################################
-    
     daily_frame["NO_cal"] = daily_frame["NO[ppb]"] * slopeNO + offsetNO
+    
     daily_frame["NOx_cal1"] = daily_frame["NOx[ppb]"] * slopeNOx + offsetNOx  
     daily_frame["NO2_cal"] = ( daily_frame["NOx_cal1"] - daily_frame["NO_cal"] ) / Sc2 # artifact efficiency
     daily_frame["NOx_cal"] = daily_frame["NO_cal"] + daily_frame["NO2_cal"]
